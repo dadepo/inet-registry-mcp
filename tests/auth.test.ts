@@ -28,12 +28,24 @@ const ripeMntner = {
   }
 };
 
+const apnicMntner = {
+  attributes: [
+    { name: "mntner", value: "APNIC-TEST-MNT" },
+    { name: "admin-c", value: "AA1-AP" },
+    { name: "upd-to", value: "ops@example.test" },
+    { name: "auth", value: "APITOKEN MEM-EXAMPLE token-tag" },
+    { name: "mnt-by", value: "APNIC-TEST-MNT" },
+    { name: "source", value: "APNIC" }
+  ]
+};
+
 describe("authenticated registry tools", () => {
   it("reports configured auth profile without exposing secrets", () => {
     const result = handleAuthStatus({
       INET_REGISTRY_MCP_PROFILE: "prod",
       RIPE_API_KEY: "ripe-secret",
-      ARIN_API_KEY: "arin-secret"
+      ARIN_API_KEY: "arin-secret",
+      APNIC_API_KEY: "apnic-secret"
     });
 
     expect(result.ok).toBe(true);
@@ -44,8 +56,13 @@ describe("authenticated registry tools", () => {
     expect(result.data.profile).toBe("production");
     expect(result.data.rirs.ripe.configured_credentials).toContain("RIPE_API_KEY");
     expect(result.data.rirs.arin.configured_credentials).toContain("ARIN_API_KEY");
+    expect(result.data.rirs.apnic.configured_credentials).toContain("APNIC_API_KEY");
+    expect(result.data.rirs.apnic.capabilities.inventory).toBe("available");
+    expect(result.data.rirs.apnic.capabilities.object_lookup).toBe("available");
+    expect(result.data.rirs.apnic.capabilities.data_quality_audit).toBe("available");
     expect(JSON.stringify(result.data)).not.toContain("ripe-secret");
     expect(JSON.stringify(result.data)).not.toContain("arin-secret");
+    expect(JSON.stringify(result.data)).not.toContain("apnic-secret");
   });
 
   it("accepts the old auth profile env var as a fallback", () => {
@@ -206,6 +223,183 @@ describe("authenticated registry tools", () => {
     });
   });
 
+  it("uses APNIC Registry API bearer auth for account-scoped object lookup", async () => {
+    const deps = fakeDeps();
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT", apnicMntner);
+
+    const result = await handleAuthenticatedObjectLookup(
+      { rir: "apnic", account: "MEM-EXAMPLE", object_type: "mntner", key: "APNIC-TEST-MNT" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(deps.httpClient.calls[0]).toEqual({
+      url: "https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT",
+      headers: {
+        Accept: "application/json",
+        Authorization: "Bearer APNIC-SECRET"
+      }
+    });
+    expect(JSON.stringify(result)).toContain("APITOKEN MEM-EXAMPLE token-tag");
+    expect(JSON.stringify(result)).not.toContain("APNIC-SECRET");
+    expect(result.ok && result.data.account).toBe("MEM-EXAMPLE");
+    expect(result.ok && result.data.registry_values_redacted).toBe(false);
+  });
+
+  it("accepts APNIC_REGISTRY_BASE overrides that already include v1", async () => {
+    const deps = fakeDeps();
+    deps.httpClient.set("https://registry.example.test/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT", apnicMntner);
+
+    const result = await handleAuthenticatedObjectLookup(
+      { rir: "apnic", account: "MEM-EXAMPLE", object_type: "mntner", key: "APNIC-TEST-MNT" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET",
+        APNIC_REGISTRY_BASE: "https://registry.example.test/v1"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(deps.httpClient.calls[0]?.url).toBe("https://registry.example.test/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT");
+  });
+
+  it("appends the registry-api/v1 path to bare-host APNIC_REGISTRY_BASE overrides", async () => {
+    const deps = fakeDeps();
+    deps.httpClient.set("https://registry.example.test/registry-api/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT", apnicMntner);
+
+    const result = await handleAuthenticatedObjectLookup(
+      { rir: "apnic", account: "MEM-EXAMPLE", object_type: "mntner", key: "APNIC-TEST-MNT" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET",
+        APNIC_REGISTRY_BASE: "https://registry.example.test"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(deps.httpClient.calls[0]?.url).toBe("https://registry.example.test/registry-api/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT");
+  });
+
+  it("requires an APNIC account for account-scoped object lookup", async () => {
+    const result = await handleAuthenticatedObjectLookup(
+      { rir: "apnic", object_type: "mntner", key: "APNIC-TEST-MNT" },
+      fakeDeps(),
+      {
+        APNIC_API_KEY: "APNIC-SECRET"
+      }
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: "bad_request",
+      detail:
+        "APNIC authenticated object lookup requires an APNIC member account. APNIC Registry API calls are account-scoped, so include the account in the prompt or tool arguments."
+    });
+  });
+
+  it("fetches APNIC account inventory from read-only Registry API endpoints", async () => {
+    const deps = fakeDeps();
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/delegation/ipv4", {
+      _embedded: { "delegation-ipv4": [{ range: "203.0.113.0/24" }] }
+    });
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/delegation/ipv6", {
+      _embedded: { "delegation-ipv6": [{ range: "2001:db8::/32" }] }
+    });
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/delegation/autnum", {
+      _embedded: { "delegation-autnum": [{ range: "AS64500" }] }
+    });
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/mntner", {
+      _embedded: { mntner: [{ mntner: "APNIC-TEST-MNT" }] }
+    });
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/irt", {
+      _embedded: { irt: [{ irt: "IRT-EXAMPLE-AP" }] }
+    });
+
+    const result = await handleAuthenticatedInventory(
+      { rir: "apnic", account: "MEM-EXAMPLE" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(deps.httpClient.calls).toHaveLength(5);
+    expect(deps.httpClient.calls.every((call) => call.headers?.Authorization === "Bearer APNIC-SECRET")).toBe(true);
+    expect(result.ok && result.data.account).toBe("MEM-EXAMPLE");
+    expect(result.ok && result.data.dataset).toBe("account:MEM-EXAMPLE");
+    expect(JSON.stringify(result)).toContain("APNIC-TEST-MNT");
+    expect(JSON.stringify(result)).not.toContain("APNIC-SECRET");
+  });
+
+  it("follows APNIC inventory pagination links within the same registry host", async () => {
+    const deps = fakeDeps();
+    const base = "https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE";
+    deps.httpClient.set(`${base}/delegation/ipv4`, { _embedded: { "delegation-ipv4": [] } });
+    deps.httpClient.set(`${base}/delegation/ipv6`, { _embedded: { "delegation-ipv6": [] } });
+    deps.httpClient.set(`${base}/delegation/autnum`, { _embedded: { "delegation-autnum": [] } });
+    deps.httpClient.set(`${base}/mntner`, {
+      _embedded: { mntner: [{ mntner: "MNT-PAGE-ONE" }] },
+      _links: { next: { href: "mntner?page=2" } }
+    });
+    deps.httpClient.set(`${base}/mntner?page=2`, {
+      _embedded: { mntner: [{ mntner: "MNT-PAGE-TWO" }] }
+    });
+    deps.httpClient.set(`${base}/irt`, {
+      _embedded: { irt: [] },
+      _links: { next: { href: "https://attacker.example.test/steal" } }
+    });
+
+    const result = await handleAuthenticatedInventory(
+      { rir: "apnic", account: "MEM-EXAMPLE" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(deps.httpClient.calls).toHaveLength(6);
+    expect(deps.httpClient.calls.some((call) => call.url.includes("attacker.example.test"))).toBe(false);
+    const records = result.ok ? (result.data.records as Array<{ dataset: string; pages_truncated?: boolean }>) : [];
+    expect(records.filter((record) => record.dataset === "mntner")).toHaveLength(2);
+    expect(records.some((record) => record.pages_truncated)).toBe(false);
+    expect(JSON.stringify(result)).toContain("MNT-PAGE-TWO");
+  });
+
+  it("stops following APNIC inventory pagination at the page cap and flags truncation", async () => {
+    const deps = fakeDeps();
+    const base = "https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE";
+    deps.httpClient.set(`${base}/delegation/ipv4`, { _embedded: { "delegation-ipv4": [] } });
+    deps.httpClient.set(`${base}/delegation/ipv6`, { _embedded: { "delegation-ipv6": [] } });
+    deps.httpClient.set(`${base}/delegation/autnum`, { _embedded: { "delegation-autnum": [] } });
+    deps.httpClient.set(`${base}/irt`, { _embedded: { irt: [] } });
+    for (let page = 1; page <= 12; page += 1) {
+      deps.httpClient.set(page === 1 ? `${base}/mntner` : `${base}/mntner?page=${page}`, {
+        _embedded: { mntner: [{ mntner: `MNT-PAGE-${page}` }] },
+        _links: { next: { href: `${base}/mntner?page=${page + 1}` } }
+      });
+    }
+
+    const result = await handleAuthenticatedInventory(
+      { rir: "apnic", account: "MEM-EXAMPLE" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    const records = result.ok ? (result.data.records as Array<{ dataset: string; pages_truncated?: boolean }>) : [];
+    const mntnerRecords = records.filter((record) => record.dataset === "mntner");
+    expect(mntnerRecords).toHaveLength(10);
+    expect(mntnerRecords.at(-1)?.pages_truncated).toBe(true);
+    expect(mntnerRecords.slice(0, -1).every((record) => !record.pages_truncated)).toBe(true);
+  });
+
   it("audits authenticated RIPE objects using read-only lookup results", async () => {
     const deps = fakeDeps();
     deps.httpClient.set("https://rest-test.db.ripe.net/test/mntner/TEST-MNT.json?unfiltered", ripeMntner);
@@ -223,5 +417,50 @@ describe("authenticated registry tools", () => {
     expect(result.ok && result.data.summary.errors).toBe(0);
     expect(result.ok && result.data.issues.map((issue) => issue.code)).toContain("sensitive_auth_attributes_present");
     expect(result.ok && result.data.issues.find((issue) => issue.field === "tech-c")).toBeUndefined();
+  });
+
+  it("audits authenticated APNIC objects using read-only lookup results", async () => {
+    const deps = fakeDeps();
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT", apnicMntner);
+
+    const result = await handleWhoisDataQualityAudit(
+      { rir: "apnic", account: "MEM-EXAMPLE", object_type: "mntner", key: "APNIC-TEST-MNT" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.data.account).toBe("MEM-EXAMPLE");
+    expect(result.ok && result.data.summary.errors).toBe(0);
+    expect(result.ok && result.data.issues.map((issue) => issue.code)).toContain("sensitive_auth_attributes_present");
+  });
+
+  it("reports APNIC data-quality gaps for missing expected fields and abuse references", async () => {
+    const deps = fakeDeps();
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/whois/organisation/ORG-EXAMPLE-AP", {
+      attributes: [
+        { name: "organisation", value: "ORG-EXAMPLE-AP" },
+        { name: "org-name", value: "Example APNIC Org" },
+        { name: "org-type", value: "LIR" },
+        { name: "address", value: "Example Street" },
+        { name: "mnt-ref", value: "APNIC-TEST-MNT" },
+        { name: "mnt-by", value: "APNIC-TEST-MNT" },
+        { name: "source", value: "APNIC" }
+      ]
+    });
+
+    const result = await handleWhoisDataQualityAudit(
+      { rir: "apnic", account: "MEM-EXAMPLE", object_type: "organisation", key: "ORG-EXAMPLE-AP" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.data.issues.map((issue) => issue.code)).toContain("missing_required_attribute");
+    expect(result.ok && result.data.issues.map((issue) => issue.code)).toContain("missing_abuse_or_irt_reference");
   });
 });

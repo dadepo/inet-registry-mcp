@@ -26,9 +26,9 @@ Not all of that exists yet. The current implementation starts with the RIR and I
 | Contact card | Yes | Yes | Yes | Yes | Yes |
 | Route object validation | Yes | Yes | No | No | No |
 | AS-SET expansion | Yes | Yes | No | No | No |
-| Authenticated object lookup | Yes | Yes | Not implemented | Not implemented | Not implemented |
-| Authenticated resource inventory | Yes | Partial | Not implemented | Not implemented | Not implemented |
-| Registry data quality audit | Yes | Yes | Not implemented | Not implemented | Not implemented |
+| Authenticated object lookup | Yes | Yes | Yes | Not implemented | Not implemented |
+| Authenticated resource inventory | Yes | Partial | Yes | Not implemented | Not implemented |
+| Registry data quality audit | Yes | Yes | Yes | Not implemented | Not implemented |
 
 `Not implemented` means this server does not yet expose a tested read-only authenticated path for that RIR. It does not mean the RIR has no authenticated services.
 
@@ -228,13 +228,19 @@ ARIN_INVENTORY_POC_HANDLES=
 ARIN_INVENTORY_CUSTOMER_HANDLES=
 ARIN_INVENTORY_DELEGATION_NAMES=
 ARIN_INVENTORY_TICKET_NUMBERS=
+
+# APNIC Registry API authenticated object lookup, account resource inventory,
+# and audit. APNIC calls are account-scoped, so prompts must name the APNIC
+# member account to query.
+APNIC_API_KEY=
 ```
 
 Current authenticated scope:
 
 - RIPE: object lookup, maintained-object inventory by inverse `mnt-by` lookup, and data quality audit.
 - ARIN: object lookup and data quality audit; inventory works for handles listed in `ARIN_INVENTORY_*`.
-- APNIC, AfriNIC, LACNIC: auth status reports configuration, but authenticated inventory/object/audit calls return `not_supported` until provider-specific read paths are implemented.
+- APNIC: object lookup, account resource inventory, and data quality audit through the APNIC Registry API. APNIC Registry API calls require the APNIC member account in the prompt or tool arguments; the server does not keep a default account. Inventory follows Registry API pagination links on the configured registry host, up to 10 pages per dataset, and marks the last record with `pages_truncated: true` when more pages remain.
+- AfriNIC, LACNIC: auth status reports configuration, but authenticated inventory/object/audit calls return `not_supported` until provider-specific read paths are implemented.
 
 Supported endpoint overrides for local testing:
 
@@ -245,7 +251,17 @@ APNIC_REGISTRY_BASE=
 LACNIC_REGISTRATION_BASE=
 ```
 
-With `INET_REGISTRY_MCP_PROFILE=test`, supported authenticated calls use the RIPE TEST DB and ARIN OT&E endpoints by default.
+With `INET_REGISTRY_MCP_PROFILE=test`, supported authenticated calls use the RIPE TEST DB, ARIN OT&E, and APNIC Registry API testbed (`https://registry-testbed.apnic.net/registry-api/v1`) endpoint defaults where available. Override `APNIC_REGISTRY_BASE` if APNIC issues a different test Registry API base with your credentials; bare-host overrides get the standard `/registry-api/v1` path appended automatically.
+
+Example APNIC prompts:
+
+```text
+Show the authenticated APNIC resource inventory for account MEM-EXAMPLE.
+```
+
+```text
+Using APNIC account MEM-EXAMPLE, show the authenticated WHOIS object mntner APNIC-TEST-MNT.
+```
 
 ## Endpoints
 
@@ -253,7 +269,7 @@ Default public endpoints:
 
 - RIPE NCC: `whois.ripe.net`, `https://rest.db.ripe.net`, `https://rdap.db.ripe.net`
 - ARIN: `whois.arin.net`, `https://whois.arin.net/rest`, `https://rdap.arin.net/registry`
-- APNIC: `whois.apnic.net`, `https://registry-api.apnic.net/v1`, `https://rdap.apnic.net`
+- APNIC: `whois.apnic.net`, `https://registry-api.apnic.net/registry-api/v1`, `https://rdap.apnic.net`
 - AfriNIC: `whois.afrinic.net`, `https://rdap.afrinic.net/rdap`
 - LACNIC: `whois.lacnic.net`, `https://rdap.lacnic.net/rdap`
 
