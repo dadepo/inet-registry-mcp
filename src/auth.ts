@@ -39,13 +39,13 @@ const defaultEndpoints: Record<WhoisMcpProfile, AuthEndpointSet> = {
   production: {
     ripeDatabaseRestBase: "https://rest.db.ripe.net/ripe",
     arinRegRestBase: "https://reg.arin.net/rest",
-    apnicRegistryBase: "https://registry-api.apnic.net",
+    apnicRegistryBase: "https://registry-api.apnic.net/registry-api/v1",
     lacnicRegistrationBase: ""
   },
   test: {
     ripeDatabaseRestBase: "https://rest-test.db.ripe.net/test",
     arinRegRestBase: "https://reg.ote.arin.net/rest",
-    apnicRegistryBase: "https://registry-testbed.apnic.net",
+    apnicRegistryBase: "https://registry-testbed.apnic.net/registry-api/v1",
     lacnicRegistrationBase: ""
   }
 };

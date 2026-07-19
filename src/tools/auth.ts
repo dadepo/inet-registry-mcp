@@ -903,7 +903,7 @@ function joinUrl(base: string, ...segments: string[]): string {
 function apnicEndpoint(base: string, account: string, ...segments: string[]): string {
   const parsed = new URL(base);
   const path = parsed.pathname.replace(/\/+$/, "");
-  const pathSegments = path.endsWith("/v1") ? [account, ...segments] : ["v1", account, ...segments];
+  const pathSegments = path.endsWith("/v1") ? [account, ...segments] : ["registry-api", "v1", account, ...segments];
   return joinUrl(base, ...pathSegments);
 }
 

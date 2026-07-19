@@ -259,7 +259,7 @@ APNIC_REGISTRY_BASE=
 LACNIC_REGISTRATION_BASE=
 ```
 
-With `WHOIS_MCP_PROFILE=test`, supported authenticated calls use the RIPE TEST DB, ARIN OT&E, and APNIC testbed endpoint defaults where available. Override `APNIC_REGISTRY_BASE` if APNIC issues a different test Registry API base with your credentials.
+With `WHOIS_MCP_PROFILE=test`, supported authenticated calls use the RIPE TEST DB, ARIN OT&E, and APNIC Registry API testbed (`https://registry-testbed.apnic.net/registry-api/v1`) endpoint defaults where available. Override `APNIC_REGISTRY_BASE` if APNIC issues a different test Registry API base with your credentials; bare-host overrides get the standard `/registry-api/v1` path appended automatically.
 
 Example APNIC prompts:
 
@@ -275,7 +275,7 @@ RIR endpoints are configured in source:
 
 - RIPE NCC: `whois.ripe.net`, `https://rest.db.ripe.net`, `https://rdap.db.ripe.net`
 - ARIN: `whois.arin.net`, `https://whois.arin.net/rest`, `https://rdap.arin.net/registry`
-- APNIC: `whois.apnic.net`, `https://registry-api.apnic.net`, `https://rdap.apnic.net`
+- APNIC: `whois.apnic.net`, `https://registry-api.apnic.net/registry-api/v1`, `https://rdap.apnic.net`
 - AfriNIC: `whois.afrinic.net`, `https://rdap.afrinic.net/rdap`
 - LACNIC: `whois.lacnic.net`, `https://rdap.lacnic.net/rdap`
 

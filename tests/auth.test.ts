@@ -215,7 +215,7 @@ describe("authenticated WHOIS tools", () => {
 
   it("uses APNIC Registry API bearer auth for account-scoped object lookup", async () => {
     const deps = fakeDeps();
-    deps.httpClient.set("https://registry-api.apnic.net/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT", apnicMntner);
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT", apnicMntner);
 
     const result = await handleAuthenticatedObjectLookup(
       { rir: "apnic", account: "MEM-EXAMPLE", object_type: "mntner", key: "APNIC-TEST-MNT" },
@@ -227,7 +227,7 @@ describe("authenticated WHOIS tools", () => {
 
     expect(result.ok).toBe(true);
     expect(deps.httpClient.calls[0]).toEqual({
-      url: "https://registry-api.apnic.net/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT",
+      url: "https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT",
       headers: {
         Accept: "application/json",
         Authorization: "Bearer APNIC-SECRET"
@@ -256,6 +256,23 @@ describe("authenticated WHOIS tools", () => {
     expect(deps.httpClient.calls[0]?.url).toBe("https://registry.example.test/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT");
   });
 
+  it("appends the registry-api/v1 path to bare-host APNIC_REGISTRY_BASE overrides", async () => {
+    const deps = fakeDeps();
+    deps.httpClient.set("https://registry.example.test/registry-api/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT", apnicMntner);
+
+    const result = await handleAuthenticatedObjectLookup(
+      { rir: "apnic", account: "MEM-EXAMPLE", object_type: "mntner", key: "APNIC-TEST-MNT" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET",
+        APNIC_REGISTRY_BASE: "https://registry.example.test"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(deps.httpClient.calls[0]?.url).toBe("https://registry.example.test/registry-api/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT");
+  });
+
   it("requires an APNIC account for account-scoped object lookup", async () => {
     const result = await handleAuthenticatedObjectLookup(
       { rir: "apnic", object_type: "mntner", key: "APNIC-TEST-MNT" },
@@ -275,19 +292,19 @@ describe("authenticated WHOIS tools", () => {
 
   it("fetches APNIC account inventory from read-only Registry API endpoints", async () => {
     const deps = fakeDeps();
-    deps.httpClient.set("https://registry-api.apnic.net/v1/MEM-EXAMPLE/delegation/ipv4", {
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/delegation/ipv4", {
       _embedded: { "delegation-ipv4": [{ range: "203.0.113.0/24" }] }
     });
-    deps.httpClient.set("https://registry-api.apnic.net/v1/MEM-EXAMPLE/delegation/ipv6", {
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/delegation/ipv6", {
       _embedded: { "delegation-ipv6": [{ range: "2001:db8::/32" }] }
     });
-    deps.httpClient.set("https://registry-api.apnic.net/v1/MEM-EXAMPLE/delegation/autnum", {
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/delegation/autnum", {
       _embedded: { "delegation-autnum": [{ range: "AS64500" }] }
     });
-    deps.httpClient.set("https://registry-api.apnic.net/v1/MEM-EXAMPLE/mntner", {
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/mntner", {
       _embedded: { mntner: [{ mntner: "APNIC-TEST-MNT" }] }
     });
-    deps.httpClient.set("https://registry-api.apnic.net/v1/MEM-EXAMPLE/irt", {
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/irt", {
       _embedded: { irt: [{ irt: "IRT-EXAMPLE-AP" }] }
     });
 
@@ -329,7 +346,7 @@ describe("authenticated WHOIS tools", () => {
 
   it("audits authenticated APNIC objects using read-only lookup results", async () => {
     const deps = fakeDeps();
-    deps.httpClient.set("https://registry-api.apnic.net/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT", apnicMntner);
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/whois/mntner/APNIC-TEST-MNT", apnicMntner);
 
     const result = await handleWhoisDataQualityAudit(
       { rir: "apnic", account: "MEM-EXAMPLE", object_type: "mntner", key: "APNIC-TEST-MNT" },
@@ -347,7 +364,7 @@ describe("authenticated WHOIS tools", () => {
 
   it("reports APNIC data-quality gaps for missing expected fields and abuse references", async () => {
     const deps = fakeDeps();
-    deps.httpClient.set("https://registry-api.apnic.net/v1/MEM-EXAMPLE/whois/organisation/ORG-EXAMPLE-AP", {
+    deps.httpClient.set("https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE/whois/organisation/ORG-EXAMPLE-AP", {
       attributes: [
         { name: "organisation", value: "ORG-EXAMPLE-AP" },
         { name: "org-name", value: "Example APNIC Org" },
