@@ -107,6 +107,8 @@ const arinObjectPaths: Record<string, string> = {
   ticket: "ticket"
 };
 
+const apnicInventoryPageCap = 10;
+
 const apnicInventorySources: Array<{ dataset: string; path: string[] }> = [
   { dataset: "delegation-ipv4", path: ["delegation", "ipv4"] },
   { dataset: "delegation-ipv6", path: ["delegation", "ipv6"] },
@@ -217,7 +219,7 @@ export function registerAuthTools(server: McpServer, deps: ToolDependencies): vo
     "whois_authenticated_resource_inventory",
     {
       description:
-        "Read-only authenticated WHOIS resource inventory. RIPE lists objects maintained by a mntner using an authenticated RIPE Database inverse lookup. ARIN reads configured inventory handles through Reg-RWS. APNIC reads account-scoped Registry API delegations, maintainers, and IRTs.",
+        "Read-only authenticated WHOIS resource inventory. RIPE lists objects maintained by a mntner using an authenticated RIPE Database inverse lookup. ARIN reads configured inventory handles through Reg-RWS. APNIC reads account-scoped Registry API delegations, maintainers, and IRTs, following pagination links up to 10 pages per dataset; a record with pages_truncated true means more pages exist.",
       inputSchema: {
         rir: rirSchema.nullable().optional().describe("RIR to query. Defaults to RIPE. Currently implemented for RIPE, ARIN, and APNIC."),
         account: z
@@ -417,18 +419,32 @@ async function getApnicInventory(
   try {
     const records = [];
     for (const source of apnicInventorySources) {
-      const endpoint = apnicEndpoint(endpointBase, normalizedAccount, ...source.path);
-      const object = await deps.httpClient.getJson(endpoint, {
-        headers: {
-          Accept: "application/json",
-          Authorization: authHeader
+      let endpoint: string | null = apnicEndpoint(endpointBase, normalizedAccount, ...source.path);
+      for (let page = 1; endpoint; page += 1) {
+        let object: unknown;
+        try {
+          object = await deps.httpClient.getJson(endpoint, {
+            headers: {
+              Accept: "application/json",
+              Authorization: authHeader
+            }
+          });
+        } catch (error) {
+          if (page === 1) {
+            throw error;
+          }
+          break;
         }
-      });
-      records.push({
-        dataset: source.dataset,
-        endpoint,
-        object: redactKnownSecrets(object, env)
-      });
+        const next = apnicNextPageUrl(object, endpoint, endpointBase);
+        const truncated = next !== null && page >= apnicInventoryPageCap;
+        records.push({
+          dataset: source.dataset,
+          endpoint,
+          object: redactKnownSecrets(object, env),
+          ...(truncated ? { pages_truncated: true } : {})
+        });
+        endpoint = truncated ? null : next;
+      }
     }
 
     return {
@@ -898,6 +914,25 @@ function joinUrl(base: string, ...segments: string[]): string {
     .map((segment) => encodeURIComponent(segment))
     .join("/");
   return path ? `${trimmedBase}/${path}` : trimmedBase;
+}
+
+function apnicNextPageUrl(object: unknown, pageUrl: string, base: string): string | null {
+  const href = stringValue(asRecord(asRecord(asRecord(object)._links).next).href).trim();
+  if (!href) {
+    return null;
+  }
+  let resolved: URL;
+  let baseUrl: URL;
+  try {
+    resolved = new URL(href, pageUrl);
+    baseUrl = new URL(base);
+  } catch {
+    return null;
+  }
+  if (resolved.protocol !== baseUrl.protocol || resolved.host !== baseUrl.host) {
+    return null;
+  }
+  return resolved.toString();
 }
 
 function apnicEndpoint(base: string, account: string, ...segments: string[]): string {

@@ -325,6 +325,71 @@ describe("authenticated WHOIS tools", () => {
     expect(JSON.stringify(result)).not.toContain("APNIC-SECRET");
   });
 
+  it("follows APNIC inventory pagination links within the same registry host", async () => {
+    const deps = fakeDeps();
+    const base = "https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE";
+    deps.httpClient.set(`${base}/delegation/ipv4`, { _embedded: { "delegation-ipv4": [] } });
+    deps.httpClient.set(`${base}/delegation/ipv6`, { _embedded: { "delegation-ipv6": [] } });
+    deps.httpClient.set(`${base}/delegation/autnum`, { _embedded: { "delegation-autnum": [] } });
+    deps.httpClient.set(`${base}/mntner`, {
+      _embedded: { mntner: [{ mntner: "MNT-PAGE-ONE" }] },
+      _links: { next: { href: "mntner?page=2" } }
+    });
+    deps.httpClient.set(`${base}/mntner?page=2`, {
+      _embedded: { mntner: [{ mntner: "MNT-PAGE-TWO" }] }
+    });
+    deps.httpClient.set(`${base}/irt`, {
+      _embedded: { irt: [] },
+      _links: { next: { href: "https://attacker.example.test/steal" } }
+    });
+
+    const result = await handleAuthenticatedInventory(
+      { rir: "apnic", account: "MEM-EXAMPLE" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(deps.httpClient.calls).toHaveLength(6);
+    expect(deps.httpClient.calls.some((call) => call.url.includes("attacker.example.test"))).toBe(false);
+    const records = result.ok ? (result.data.records as Array<{ dataset: string; pages_truncated?: boolean }>) : [];
+    expect(records.filter((record) => record.dataset === "mntner")).toHaveLength(2);
+    expect(records.some((record) => record.pages_truncated)).toBe(false);
+    expect(JSON.stringify(result)).toContain("MNT-PAGE-TWO");
+  });
+
+  it("stops following APNIC inventory pagination at the page cap and flags truncation", async () => {
+    const deps = fakeDeps();
+    const base = "https://registry-api.apnic.net/registry-api/v1/MEM-EXAMPLE";
+    deps.httpClient.set(`${base}/delegation/ipv4`, { _embedded: { "delegation-ipv4": [] } });
+    deps.httpClient.set(`${base}/delegation/ipv6`, { _embedded: { "delegation-ipv6": [] } });
+    deps.httpClient.set(`${base}/delegation/autnum`, { _embedded: { "delegation-autnum": [] } });
+    deps.httpClient.set(`${base}/irt`, { _embedded: { irt: [] } });
+    for (let page = 1; page <= 12; page += 1) {
+      deps.httpClient.set(page === 1 ? `${base}/mntner` : `${base}/mntner?page=${page}`, {
+        _embedded: { mntner: [{ mntner: `MNT-PAGE-${page}` }] },
+        _links: { next: { href: `${base}/mntner?page=${page + 1}` } }
+      });
+    }
+
+    const result = await handleAuthenticatedInventory(
+      { rir: "apnic", account: "MEM-EXAMPLE" },
+      deps,
+      {
+        APNIC_API_KEY: "APNIC-SECRET"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    const records = result.ok ? (result.data.records as Array<{ dataset: string; pages_truncated?: boolean }>) : [];
+    const mntnerRecords = records.filter((record) => record.dataset === "mntner");
+    expect(mntnerRecords).toHaveLength(10);
+    expect(mntnerRecords.at(-1)?.pages_truncated).toBe(true);
+    expect(mntnerRecords.slice(0, -1).every((record) => !record.pages_truncated)).toBe(true);
+  });
+
   it("audits authenticated RIPE objects using read-only lookup results", async () => {
     const deps = fakeDeps();
     deps.httpClient.set("https://rest-test.db.ripe.net/test/mntner/TEST-MNT.json?unfiltered", ripeMntner);
