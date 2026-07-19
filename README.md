@@ -1,92 +1,74 @@
-# whois-mcp
+# inet-registry-mcp
 
-A Model Context Protocol (MCP) server that gives MCP clients WHOIS, RDAP, IRR route-object, AS-SET, and abuse-contact lookup tools for the five Regional Internet Registries.
+MCP server for Internet registry and registry-adjacent data used by network operators.
+
+Today it starts with RIR data: ownership and contact lookups, abuse discovery, IRR route objects, AS-SET expansion, authenticated registry lookups, maintained-object inventory, and basic registry data quality checks.
 
 This project currently runs from a local checkout. It has not been published to npm yet.
 
-## Features
+## Scope
 
-### RIR Coverage
+The project is organized around Internet registry systems and registry-adjacent data sources:
+
+- numbering: RIR/RDAP data, IP and ASN allocation data, authenticated inventory, abuse and contact lookup
+- routing: IRR route/route6/aut-num/as-set, RPKI ROA validation, BGP origin visibility, bogon and martian checks
+- naming: DNS delegation, DNSSEC validation, reverse DNS, IANA root and TLD data
+- interconnection: PeeringDB ASN, org, IX, facility, policy, and contact lookup
+- metadata: geofeeds, abuse contacts, and source-of-truth consistency audits
+
+Not all of that exists yet. The current implementation starts with the RIR and IRR pieces.
+
+## Current Coverage
 
 | Tool category | RIPE NCC | ARIN | APNIC | AfriNIC | LACNIC |
 | --- | :---: | :---: | :---: | :---: | :---: |
-| Raw WHOIS query | Yes | Yes | Yes | Yes | Yes |
+| Public registry query | Yes | Yes | Yes | Yes | Yes |
 | Contact card | Yes | Yes | Yes | Yes | Yes |
 | Route object validation | Yes | Yes | No | No | No |
 | AS-SET expansion | Yes | Yes | No | No | No |
 | Authenticated object lookup | Yes | Yes | Yes | Not implemented | Not implemented |
 | Authenticated resource inventory | Yes | Partial | Yes | Not implemented | Not implemented |
-| WHOIS data quality audit | Yes | Yes | Yes | Not implemented | Not implemented |
+| Registry data quality audit | Yes | Yes | Yes | Not implemented | Not implemented |
 
-`Not implemented` means this server does not yet expose a tested read-only authenticated WHOIS path for that RIR. It does not mean the RIR has no authenticated services.
+`Not implemented` means this server does not yet expose a tested read-only authenticated path for that RIR. It does not mean the RIR has no authenticated services.
 
-Tools are registered with RIR prefixes, for example:
+Current workflows:
 
-- `arin_whois_query`
-- `ripe_validate_route_object`
-- `ripe_expand_as_set`
-- `apnic_contact_card`
-- `afrinic_contact_card`
-- `lacnic_contact_card`
-- `whois_auth_status`
-- `whois_authenticated_object_lookup`
-- `whois_authenticated_resource_inventory`
-- `whois_data_quality_audit`
+- look up ownership and registration data for IPs and ASNs
+- find abuse, admin, and technical contacts
+- validate RIPE and ARIN route objects
+- expand RIPE and ARIN AS-SETs
+- list authenticated RIPE maintained objects
+- fetch authenticated RIPE and ARIN registry objects
+- audit authenticated RIPE and ARIN registry objects for basic data quality issues
 
-### Registry Regions
-
-- RIPE NCC: Europe, Middle East, Central Asia
-- ARIN: North America
-- APNIC: Asia-Pacific
-- AfriNIC: Africa
-- LACNIC: Latin America and Caribbean
-
-## Local Setup
-
-Install dependencies from the local checkout:
+## Install From Source
 
 ```bash
-git clone https://github.com/dadepo/whois-mcp.git
-cd whois-mcp
+git clone https://github.com/dadepo/inet-registry-mcp.git
+cd inet-registry-mcp
 npm ci
 ```
 
-Optional local configuration:
+Optional local config:
 
 ```bash
 cp env.example .env
 ```
 
-All public RIR tools are enabled by default. Edit `.env` only when you want to disable a registry, change timeouts/HTTP bind settings, or configure authenticated read-only lookups.
+All public RIR tools are enabled by default. Edit `.env` only when you want to disable a registry, change timeouts, change HTTP bind settings, or configure authenticated read-only lookups.
 
 ## Running Locally
 
-This MCP server supports two transports:
+There is no default transport. Pick one explicitly.
 
-- stdio: for clients that launch the process and communicate over stdin/stdout
-- HTTP: for clients that connect to an HTTP endpoint
-
-There is no default transport. Choose one explicitly.
-
-### Stdio Transport
-
-For development:
+For stdio, which is what most local MCP clients use:
 
 ```bash
 npm --silent run dev:stdio
 ```
 
-For MCP client configuration, prefer the local bin script after `npm ci`:
-
-```bash
-/absolute/path/to/whois-mcp/bin/whois-mcp.js
-```
-
-The bin script runs the TypeScript source through the local `tsx` dependency.
-
-### HTTP Transport
-
-Start the HTTP MCP server:
+For HTTP:
 
 ```bash
 npm run dev:http
@@ -98,41 +80,43 @@ The HTTP endpoint is:
 http://127.0.0.1:8000/mcp
 ```
 
-Override the bind address or port when needed:
+To bind somewhere else:
 
 ```bash
 HTTP_HOST=0.0.0.0 HTTP_PORT=9000 npm run dev:http
 ```
 
-## Claude Code Setup
+`npm run dev` intentionally exits with guidance. Use `dev:stdio` or `dev:http`.
 
-From this repository directory, add the stdio server:
+## Claude Code
 
-```bash
-claude mcp add --transport stdio whois-mcp -- npm --silent run dev:stdio
-```
-
-Alternatively, use the absolute local bin path:
+From this repo directory:
 
 ```bash
-claude mcp add --transport stdio whois-mcp -- /absolute/path/to/whois-mcp/bin/whois-mcp.js
+claude mcp add --transport stdio inet-registry-mcp -- npm --silent run dev:stdio
 ```
 
-For HTTP mode, start the HTTP server first and then add:
+Or point Claude Code at the local bin script:
 
 ```bash
-claude mcp add --transport http whois-mcp-http http://127.0.0.1:8000/mcp
+claude mcp add --transport stdio inet-registry-mcp -- /absolute/path/to/inet-registry-mcp/bin/inet-registry-mcp.js
 ```
 
-## Claude Desktop Setup
+For HTTP mode, start the HTTP server first:
+
+```bash
+claude mcp add --transport http inet-registry-mcp-http http://127.0.0.1:8000/mcp
+```
+
+## Claude Desktop
 
 After `npm ci`, add a stdio server that points at your local checkout:
 
 ```json
 {
   "mcpServers": {
-    "whois-mcp": {
-      "command": "/absolute/path/to/whois-mcp/bin/whois-mcp.js"
+    "inet-registry-mcp": {
+      "command": "/absolute/path/to/inet-registry-mcp/bin/inet-registry-mcp.js"
     }
   }
 }
@@ -149,14 +133,14 @@ For HTTP mode:
 ```json
 {
   "mcpServers": {
-    "whois-mcp-http": {
+    "inet-registry-mcp-http": {
       "url": "http://127.0.0.1:8000/mcp"
     }
   }
 }
 ```
 
-## Tool Usage Examples
+## Example Prompts
 
 ```text
 Who owns 8.8.8.8?
@@ -174,6 +158,14 @@ Is there a RIPE route object for 193.0.0.0/21 originated by AS3333?
 Expand AS-RIPENCC to direct members only.
 ```
 
+```text
+Show me all objects maintained by DADEPO-TEST-MNT.
+```
+
+```text
+Run a registry data quality audit for RIPE maintainer DADEPO-TEST-MNT.
+```
+
 ## Configuration
 
 Environment variables:
@@ -181,7 +173,7 @@ Environment variables:
 ```bash
 # Auth profile. production is the default. Use test to point supported
 # authenticated calls at RIR test environments.
-WHOIS_MCP_PROFILE=production
+INET_REGISTRY_MCP_PROFILE=production
 
 # Enable or disable RIR support. All default to true.
 SUPPORT_RIPE=true
@@ -192,32 +184,32 @@ SUPPORT_LACNIC=true
 
 # Timeouts and cache settings.
 HTTP_TIMEOUT_SECONDS=10
-WHOIS_CONNECT_TIMEOUT_SECONDS=5
-WHOIS_READ_TIMEOUT_SECONDS=5
+PORT43_CONNECT_TIMEOUT_SECONDS=5
+PORT43_READ_TIMEOUT_SECONDS=5
 CACHE_TTL_SECONDS=60
 CACHE_MAX_ITEMS=512
 
 # Custom User-Agent string.
-USER_AGENT=whois-mcp/1.0
+USER_AGENT=inet-registry-mcp/1.0
 
 # HTTP transport settings.
 HTTP_HOST=127.0.0.1
 HTTP_PORT=8000
 ```
 
-### Authenticated Read-Only Tools
+## Authenticated Read-Only Tools
 
 Authenticated support uses one global profile:
 
 ```bash
-WHOIS_MCP_PROFILE=production
+INET_REGISTRY_MCP_PROFILE=production
 # or
-WHOIS_MCP_PROFILE=test
+INET_REGISTRY_MCP_PROFILE=test
 ```
 
 There are no `*_AUTH_ENABLED` flags. A capability is available when its credential is present.
 
-Authenticated lookup tools return registry object values received from the RIR. Local MCP credentials such as API keys are still redacted if they appear in responses or URLs.
+Authenticated lookup tools return the object values received from the RIR. Local MCP credentials such as API keys are still redacted if they appear in responses or URLs.
 
 ```bash
 # RIPE Database REST API authenticated object lookup, maintained-object inventory, and audit.
@@ -243,12 +235,12 @@ ARIN_INVENTORY_TICKET_NUMBERS=
 APNIC_API_KEY=
 ```
 
-Current authenticated tool scope:
+Current authenticated scope:
 
 - RIPE: object lookup, maintained-object inventory by inverse `mnt-by` lookup, and data quality audit.
 - ARIN: object lookup and data quality audit; inventory works for handles listed in `ARIN_INVENTORY_*`.
 - APNIC: object lookup, account resource inventory, and data quality audit through the APNIC Registry API. APNIC Registry API calls require the APNIC member account in the prompt or tool arguments; the server does not keep a default account. Inventory follows Registry API pagination links on the configured registry host, up to 10 pages per dataset, and marks the last record with `pages_truncated: true` when more pages remain.
-- AfriNIC, LACNIC: `whois_auth_status` reports configuration, but authenticated inventory/object/audit calls return `not_supported` until provider-specific read paths are implemented.
+- AfriNIC, LACNIC: auth status reports configuration, but authenticated inventory/object/audit calls return `not_supported` until provider-specific read paths are implemented.
 
 Supported endpoint overrides for local testing:
 
@@ -259,7 +251,7 @@ APNIC_REGISTRY_BASE=
 LACNIC_REGISTRATION_BASE=
 ```
 
-With `WHOIS_MCP_PROFILE=test`, supported authenticated calls use the RIPE TEST DB, ARIN OT&E, and APNIC Registry API testbed (`https://registry-testbed.apnic.net/registry-api/v1`) endpoint defaults where available. Override `APNIC_REGISTRY_BASE` if APNIC issues a different test Registry API base with your credentials; bare-host overrides get the standard `/registry-api/v1` path appended automatically.
+With `INET_REGISTRY_MCP_PROFILE=test`, supported authenticated calls use the RIPE TEST DB, ARIN OT&E, and APNIC Registry API testbed (`https://registry-testbed.apnic.net/registry-api/v1`) endpoint defaults where available. Override `APNIC_REGISTRY_BASE` if APNIC issues a different test Registry API base with your credentials; bare-host overrides get the standard `/registry-api/v1` path appended automatically.
 
 Example APNIC prompts:
 
@@ -271,7 +263,9 @@ Show the authenticated APNIC resource inventory for account MEM-EXAMPLE.
 Using APNIC account MEM-EXAMPLE, show the authenticated WHOIS object mntner APNIC-TEST-MNT.
 ```
 
-RIR endpoints are configured in source:
+## Endpoints
+
+Default public endpoints:
 
 - RIPE NCC: `whois.ripe.net`, `https://rest.db.ripe.net`, `https://rdap.db.ripe.net`
 - ARIN: `whois.arin.net`, `https://whois.arin.net/rest`, `https://rdap.arin.net/registry`
@@ -281,7 +275,7 @@ RIR endpoints are configured in source:
 
 ## Development
 
-Run the TypeScript test suite:
+Run tests:
 
 ```bash
 npm test
@@ -299,8 +293,6 @@ Compile TypeScript:
 npm run build
 ```
 
-`npm run dev` intentionally exits with guidance. Use `npm run dev:stdio` or `npm run dev:http` so the transport is explicit.
-
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](LICENSE).
