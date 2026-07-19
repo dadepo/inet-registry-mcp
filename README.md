@@ -247,7 +247,7 @@ Current authenticated tool scope:
 
 - RIPE: object lookup, maintained-object inventory by inverse `mnt-by` lookup, and data quality audit.
 - ARIN: object lookup and data quality audit; inventory works for handles listed in `ARIN_INVENTORY_*`.
-- APNIC: object lookup, account resource inventory, and data quality audit through the APNIC Registry API. APNIC Registry API calls require the APNIC member account in the prompt or tool arguments; the server does not keep a default account.
+- APNIC: object lookup, account resource inventory, and data quality audit through the APNIC Registry API. APNIC Registry API calls require the APNIC member account in the prompt or tool arguments; the server does not keep a default account. Inventory follows Registry API pagination links on the configured registry host, up to 10 pages per dataset, and marks the last record with `pages_truncated: true` when more pages remain.
 - AfriNIC, LACNIC: `whois_auth_status` reports configuration, but authenticated inventory/object/audit calls return `not_supported` until provider-specific read paths are implemented.
 
 Supported endpoint overrides for local testing:
